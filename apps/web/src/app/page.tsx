@@ -2,8 +2,7 @@
 
 import { useEffect, useState, ChangeEvent, FormEvent } from "react";
 import { Button } from "@repo/ui/button";
-
-const API_HOST = process.env.NEXT_PUBLIC_API_HOST || "http://localhost:3001";
+import { API_HOST } from "@/constants";
 
 export default function Web() {
   const [name, setName] = useState<string>("");
@@ -15,8 +14,7 @@ export default function Web() {
     setError(undefined);
   }, [name]);
 
-  const onChange = (e: ChangeEvent<HTMLInputElement>) =>
-    setName(e.target.value);
+  const onChange = (e: ChangeEvent<HTMLInputElement>) => setName(e.target.value);
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -40,13 +38,7 @@ export default function Web() {
       <h1>Web</h1>
       <form onSubmit={onSubmit}>
         <label htmlFor="name">Name </label>
-        <input
-          type="text"
-          name="name"
-          id="name"
-          value={name}
-          onChange={onChange}
-        ></input>
+        <input type="text" name="name" id="name" value={name} onChange={onChange}></input>
         <Button type="submit">Submit</Button>
       </form>
       {error && (
