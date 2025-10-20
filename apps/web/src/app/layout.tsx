@@ -6,7 +6,7 @@ import { Toaster } from "sonner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "VidStream - Video Streaming Platform",
+  title: "CiiHu - Video Streaming Platform",
   description: "A self-hosted video distribution and streaming platform for creators and viewers",
   keywords: "video, streaming, platform, HLS, self-hosted",
 };

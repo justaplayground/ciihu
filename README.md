@@ -1,4 +1,4 @@
-# VidStream - Video Streaming Platform
+# CiiHu - Video Streaming Platform
 
 A self-hosted video distribution and streaming platform similar to YouTube, built with modern web technologies and designed for creators and viewers to upload, manage, and stream videos using HLS (HTTP Live Streaming).
 

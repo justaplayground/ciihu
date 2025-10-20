@@ -14,7 +14,7 @@ export default function HomePage(): JSX.Element {
             <Button variant="ghost" size="icon">
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-xl font-bold text-primary">VidStream</h1>
+            <h1 className="text-xl font-bold text-primary">CiiHu</h1>
           </div>
           
           {/* Search */}

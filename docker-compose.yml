@@ -4,7 +4,7 @@ services:
   # MongoDB Database
   mongodb:
     image: mongo:7.0
-    container_name: vidstream_mongodb
+    container_name: ciihu_mongodb
     restart: always
     ports:
       - "27017:27017"
@@ -16,12 +16,12 @@ services:
       - mongodb_data:/data/db
       - ./docker/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
     networks:
-      - vidstream_network
+      - ciihu_network
 
   # Redis Cache
   redis:
     image: redis:7.2-alpine
-    container_name: vidstream_redis
+    container_name: ciihu_redis
     restart: always
     ports:
       - "6379:6379"
@@ -29,11 +29,11 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - vidstream_network
+      - ciihu_network
 
   # API Server
   api:
-    container_name: vidstream_api
+    container_name: ciihu_api
     build:
       context: .
       dockerfile: ./apps/api/Dockerfile
@@ -53,11 +53,11 @@ services:
       - mongodb
       - redis
     networks:
-      - vidstream_network
+      - ciihu_network
 
   # Web Frontend
   web:
-    container_name: vidstream_web
+    container_name: ciihu_web
     build:
       context: .
       dockerfile: ./apps/web/Dockerfile
@@ -69,12 +69,12 @@ services:
     depends_on:
       - api
     networks:
-      - vidstream_network
+      - ciihu_network
 
   # NGINX Reverse Proxy
   nginx:
     image: nginx:alpine
-    container_name: vidstream_nginx
+    container_name: ciihu_nginx
     restart: always
     ports:
       - "80:80"
@@ -87,18 +87,18 @@ services:
       - web
       - api
     networks:
-      - vidstream_network
+      - ciihu_network
 
   # FFmpeg Video Processor (for transcoding)
   ffmpeg-worker:
     image: jrottenberg/ffmpeg:4.4-alpine
-    container_name: vidstream_ffmpeg
+    container_name: ciihu_ffmpeg
     restart: unless-stopped
     volumes:
       - media_storage:/media
       - ./docker/ffmpeg/process-video.sh:/usr/local/bin/process-video.sh:ro
     networks:
-      - vidstream_network
+      - ciihu_network
     command: tail -f /dev/null # Keep container running
 
 volumes:
@@ -107,5 +107,5 @@ volumes:
   media_storage:
 
 networks:
-  vidstream_network:
+  ciihu_network:
     driver: bridge
