@@ -1,10 +1,11 @@
 import jwt from 'jsonwebtoken';
 import { JWTPayload, AuthTokens } from '@repo/shared-types';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback-refresh-secret';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
+import { 
+  JWT_SECRET, 
+  JWT_REFRESH_SECRET, 
+  JWT_EXPIRES_IN, 
+  JWT_REFRESH_EXPIRES_IN 
+} from '../config/constants';
 
 export const generateTokens = (userId: string, email: string, role: 'admin' | 'user'): AuthTokens => {
   const payload: Omit<JWTPayload, 'iat' | 'exp'> = {

@@ -1,26 +1,36 @@
 import { VideoModel } from '../models';
-import { logger } from '@repo/logger';
+import { log } from '@repo/logger';
 import ffmpeg from 'fluent-ffmpeg';
 import path from 'path';
 import fs from 'fs/promises';
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
+import { redisClient } from '../config/redis';
+import { 
+  FFMPEG_PATH, 
+  FFPROBE_PATH, 
+  R2_ACCOUNT_ID, 
+  R2_ACCESS_KEY_ID, 
+  R2_SECRET_ACCESS_KEY,
+  R2_BUCKET_NAME,
+  R2_PUBLIC_URL
+} from '../config/constants';
 
 // Configure FFmpeg paths
-if (process.env.FFMPEG_PATH) {
-  ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH);
+if (FFMPEG_PATH) {
+  ffmpeg.setFfmpegPath(FFMPEG_PATH);
 }
-if (process.env.FFPROBE_PATH) {
-  ffmpeg.setFfprobePath(process.env.FFPROBE_PATH);
+if (FFPROBE_PATH) {
+  ffmpeg.setFfprobePath(FFPROBE_PATH);
 }
 
 // Cloudflare R2 client
 const r2Client = new S3Client({
   region: 'auto',
-  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
   credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+    accessKeyId: R2_ACCESS_KEY_ID,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
   },
 });
 
@@ -32,10 +42,11 @@ export interface VideoProcessingJob {
 
 export interface ProcessingProgress {
   videoId: string;
-  stage: 'downloading' | 'analyzing' | 'transcoding' | 'uploading' | 'completed' | 'error';
+  stage: 'analyzing' | 'transcoding' | 'uploading' | 'completed' | 'error';
   progress: number; // 0-100
   message?: string;
   error?: string;
+  updatedAt: number; // timestamp
 }
 
 export class VideoProcessingService {
@@ -82,8 +93,8 @@ export class VideoProcessingService {
     try {
       await this.processVideo(job);
     } catch (error) {
-      logger.error(`Failed to process video ${job.videoId}:`, error);
-      await this.updateVideoStatus(job.videoId, 'error', 0, 'Processing failed');
+      log(`Failed to process video ${job.videoId}: ${error}`);
+      await this.updateVideoStatus(job.videoId, 'error', 0, 'Processing failed', String(error));
     } finally {
       this.activeJobs.delete(job.videoId);
       // Process next job after a short delay
@@ -126,9 +137,21 @@ export class VideoProcessingService {
         { name: '480p', height: 480, bitrate: '1000k', maxrate: '1100k', bufsize: '1500k' },
         { name: '720p', height: 720, bitrate: '2500k', maxrate: '2675k', bufsize: '3750k' },
       ];
+      
+      if (metadata.height >= 1080) {
+        resolutions.push({ name: '1080p', height: 1080, bitrate: '4000k', maxrate: '4300k', bufsize: '6000k' });
+      }
+      // currently not transcoding 2k and 4k videos because it's too slow, takes too much time, and server resources are limited
+      // if (metadata.height >= 1440) {
+      //   resolutions.push({ name: '1440p', height: 1440, bitrate: '8000k', maxrate: '8600k', bufsize: '12000k' });
+      // }
+      // if (metadata.height >= 2160) {
+      //   resolutions.push({ name: '2160p', height: 2160, bitrate: '16000k', maxrate: '17200k', bufsize: '24000k' });
+      // }
 
       const hlsPlaylistUrls: any[] = [];
-      let progressStep = 30; // Start from 30%, each resolution adds ~20%
+      let progressStep = 30; // Start from 30%, each resolution adds ~12-16%
+      const proceedPercentage = 48 / resolutions.length; // 48% of the total progress is for transcoding
 
       for (const resolution of resolutions) {
         await this.updateVideoStatus(
@@ -146,7 +169,7 @@ export class VideoProcessingService {
           outputDir,
           resolution,
           (progress: number) => {
-            const currentProgress = progressStep + (progress * 0.15); // 15% per resolution
+            const currentProgress = progressStep + (progress * proceedPercentage); // ~12-16% per resolution
             this.updateVideoStatus(videoId, 'transcoding', currentProgress);
           }
         );
@@ -155,7 +178,7 @@ export class VideoProcessingService {
         await this.updateVideoStatus(
           videoId,
           'uploading',
-          progressStep + 15,
+          progressStep + proceedPercentage,
           `Uploading ${resolution.name} files`
         );
 
@@ -173,8 +196,8 @@ export class VideoProcessingService {
           fileSize: await this.getDirectorySize(outputDir),
         });
 
-        progressStep += 20;
-      }
+        progressStep += proceedPercentage;
+      } // ends with progressStep = 78%
 
       // Create master playlist
       await this.updateVideoStatus(videoId, 'uploading', 85, 'Creating master playlist');
@@ -204,10 +227,10 @@ export class VideoProcessingService {
       // Cleanup temporary files
       await fs.rm(tempDir, { recursive: true, force: true });
 
-      logger.info(`Video ${videoId} processed successfully`);
+      log(`Video ${videoId} processed successfully`);
     } catch (error) {
-      logger.error(`Error processing video ${videoId}:`, error);
-      await this.updateVideoStatus(videoId, 'error', 0, `Processing failed: ${error}`);
+      log(`Error processing video ${videoId}: ${error}`);
+      await this.updateVideoStatus(videoId, 'error', 0, 'Processing failed', String(error));
       throw error;
     }
   }
@@ -220,7 +243,7 @@ export class VideoProcessingService {
       // Download from R2
       const key = url.split('/').pop() || '';
       const command = new GetObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
+        Bucket: R2_BUCKET_NAME,
         Key: key,
       });
       
@@ -333,14 +356,14 @@ export class VideoProcessingService {
       const fileBuffer = await fs.readFile(filePath);
       
       await r2Client.send(new PutObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
+        Bucket: R2_BUCKET_NAME,
         Key: key,
         Body: fileBuffer,
         ContentType: file.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/MP2T',
       }));
     }
     
-    return `${process.env.R2_PUBLIC_URL}/${r2Prefix}/playlist.m3u8`;
+    return `${R2_PUBLIC_URL}/${r2Prefix}/playlist.m3u8`;
   }
 
   /**
@@ -360,13 +383,13 @@ export class VideoProcessingService {
     const key = `${outputPrefix}/master.m3u8`;
     
     await r2Client.send(new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
+      Bucket: R2_BUCKET_NAME,
       Key: key,
       Body: masterPlaylist,
       ContentType: 'application/x-mpegURL',
     }));
     
-    return `${process.env.R2_PUBLIC_URL}/${key}`;
+    return `${R2_PUBLIC_URL}/${key}`;
   }
 
   /**
@@ -388,14 +411,14 @@ export class VideoProcessingService {
             const thumbnailBuffer = await fs.readFile(tempThumbnail);
             
             await r2Client.send(new PutObjectCommand({
-              Bucket: process.env.R2_BUCKET_NAME,
+              Bucket: R2_BUCKET_NAME,
               Key: r2Key,
               Body: thumbnailBuffer,
               ContentType: 'image/jpeg',
             }));
             
             await fs.unlink(tempThumbnail).catch(() => {}); // Clean up
-            resolve(`${process.env.R2_PUBLIC_URL}/${r2Key}`);
+            resolve(`${R2_PUBLIC_URL}/${r2Key}`);
           } catch (error) {
             reject(error);
           }
@@ -425,29 +448,83 @@ export class VideoProcessingService {
    */
   private async updateVideoStatus(
     videoId: string,
-    stage: string,
+    stage: 'analyzing' | 'transcoding' | 'uploading' | 'completed' | 'error',
     progress: number,
-    message?: string
+    message?: string,
+    error?: string
   ): Promise<void> {
     try {
+      const normalizedProgress = Math.min(100, Math.max(0, progress));
+      const dbStatus = stage === 'completed' ? 'ready' : stage === 'error' ? 'error' : stage;
+      
+      // Update database
       await VideoModel.findByIdAndUpdate(videoId, {
-        processingProgress: Math.min(100, Math.max(0, progress)),
+        status: dbStatus,
+        processingProgress: normalizedProgress,
         ...(message && { processingMessage: message }),
       });
       
-      logger.info(`Video ${videoId} - ${stage}: ${progress}% ${message || ''}`);
+      // Update Redis for real-time tracking
+      await this.setProcessingProgress({
+        videoId,
+        stage,
+        progress: normalizedProgress,
+        message,
+        error,
+        updatedAt: Date.now(),
+      });
+      
+      log(`Video ${videoId} - ${stage}: ${normalizedProgress}% ${message || ''}`);
     } catch (error) {
-      logger.error(`Failed to update video status for ${videoId}:`, error);
+      log(`Failed to update video status for ${videoId}: ${error}`);
     }
   }
 
   /**
-   * Get processing status
+   * Set processing progress in Redis
    */
-  public getProcessingStatus(videoId: string): ProcessingProgress | null {
-    // This would typically be stored in Redis for real-time updates
-    // For now, return basic status from database
-    return null;
+  private async setProcessingProgress(progress: ProcessingProgress): Promise<void> {
+    try {
+      if (!redisClient.isOpen) {
+        log('Redis client not connected, skipping progress update');
+        return;
+      }
+      
+      const key = `video:processing:${progress.videoId}`;
+      const data = JSON.stringify({
+        ...progress,
+        updatedAt: Date.now(),
+      });
+      
+      // Store with 24 hour TTL
+      await redisClient.setEx(key, 86400, data);
+    } catch (error) {
+      log(`Failed to set processing progress in Redis: ${error}`);
+    }
+  }
+
+  /**
+   * Get processing status from Redis
+   */
+  public async getProcessingStatus(videoId: string): Promise<ProcessingProgress | null> {
+    try {
+      if (!redisClient.isOpen) {
+        log('Redis client not connected');
+        return null;
+      }
+      
+      const key = `video:processing:${videoId}`;
+      const data = await redisClient.get(key);
+      
+      if (!data) {
+        return null;
+      }
+      
+      return JSON.parse(data) as ProcessingProgress;
+    } catch (error) {
+      log(`Failed to get processing status from Redis: ${error}`);
+      return null;
+    }
   }
 }
 

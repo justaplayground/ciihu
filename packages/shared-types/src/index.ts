@@ -36,9 +36,10 @@ export interface Video {
   views: number;
   likes: number;
   dislikes: number;
-  status: 'processing' | 'ready' | 'error';
+  status: 'analyzing' | 'transcoding' | 'uploading' | 'processing' | 'ready' | 'error';
   visibility: 'public' | 'unlisted' | 'private';
   processingProgress?: number; // 0-100
+  processingMessage?: string; // Current processing stage message
   resolutions: VideoResolution[];
   createdAt: Date;
   updatedAt: Date;

@@ -1,35 +1,47 @@
-import { createClient } from 'redis';
-import { logger } from '@repo/logger';
+import { createClient, RedisClientType } from 'redis';
+import { log } from '@repo/logger';
+import { REDIS_URL } from './constants';
 
-const redisClient = createClient({
-  url: process.env.REDIS_URL || 'redis://localhost:6379',
-  retry_strategy: (times: number) => {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
+const redisClient: RedisClientType = createClient({
+  url: REDIS_URL,
+  socket: {
+    reconnectStrategy: (retries) => {
+      if (retries > 10) {
+        log('Redis: Max reconnection attempts reached');
+        return new Error('Max reconnection attempts reached');
+      }
+      const delay = Math.min(retries * 50, 2000);
+      log(`Redis: Reconnecting in ${delay}ms (attempt ${retries})`);
+      return delay;
+    },
+    connectTimeout: 10000,
   },
 });
 
 redisClient.on('error', (err) => {
-  logger.error('Redis Client Error:', err);
+  log('Redis Client Error:' + err);
 });
 
 redisClient.on('connect', () => {
-  logger.info('Redis connected');
+  log('Redis connected');
 });
 
 redisClient.on('ready', () => {
-  logger.info('Redis client ready');
+  log('Redis client ready');
 });
 
 redisClient.on('end', () => {
-  logger.info('Redis connection closed');
+  log('Redis connection closed');
 });
 
 const connectRedis = async (): Promise<void> => {
   try {
+    log('Attempting to connect to Redis...');
     await redisClient.connect();
+    log('Redis connection established successfully');
   } catch (error) {
-    logger.error('Error connecting to Redis:', error);
+    log('Error connecting to Redis:' + error);
+    log('Application will continue without Redis caching');
     // Continue without Redis for non-critical caching
   }
 };
@@ -38,9 +50,9 @@ const connectRedis = async (): Promise<void> => {
 process.on('SIGINT', async () => {
   try {
     await redisClient.quit();
-    logger.info('Redis connection closed through app termination');
+    log('Redis connection closed through app termination');
   } catch (err) {
-    logger.error('Error during Redis disconnection:', err);
+    log('Error during Redis disconnection:' + err);
   }
 });
 

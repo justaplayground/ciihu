@@ -3,11 +3,12 @@ import { Strategy as JwtStrategy, ExtractJwt, StrategyOptions } from 'passport-j
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { UserModel } from '../models';
 import { JWTPayload } from '@repo/shared-types';
+import { JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL } from './constants';
 
 // JWT Strategy
 const jwtOptions: StrategyOptions = {
   jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-  secretOrKey: process.env.JWT_SECRET || 'fallback-secret',
+  secretOrKey: JWT_SECRET,
 };
 
 passport.use(new JwtStrategy(jwtOptions, async (payload: JWTPayload, done) => {
@@ -23,11 +24,11 @@ passport.use(new JwtStrategy(jwtOptions, async (payload: JWTPayload, done) => {
 }));
 
 // Google OAuth Strategy
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
   passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback',
+    clientID: GOOGLE_CLIENT_ID,
+    clientSecret: GOOGLE_CLIENT_SECRET,
+    callbackURL: GOOGLE_CALLBACK_URL,
   }, async (accessToken, refreshToken, profile, done) => {
     try {
       // Check if user already exists with Google ID

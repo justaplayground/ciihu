@@ -81,7 +81,7 @@ const videoSchema = new Schema<VideoDocument>({
   },
   status: {
     type: String,
-    enum: ['processing', 'ready', 'error'],
+    enum: ['analyzing', 'transcoding', 'uploading', 'processing', 'ready', 'error'],
     default: 'processing',
   },
   visibility: {
@@ -94,6 +94,10 @@ const videoSchema = new Schema<VideoDocument>({
     min: 0,
     max: 100,
     default: 0,
+  },
+  processingMessage: {
+    type: String,
+    default: null,
   },
   resolutions: [videoResolutionSchema],
 }, {

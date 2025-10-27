@@ -6,6 +6,7 @@ import { generateTokens, verifyRefreshToken } from '../utils/jwt';
 import { authenticateJWT } from '../middleware/auth';
 import { validate, userValidationSchemas } from '../middleware/validation';
 import { ApiResponse, AuthTokens } from '@repo/shared-types';
+import { FRONTEND_URL } from '../config/constants';
 
 const router = Router();
 
@@ -101,17 +102,17 @@ router.get('/google/callback',
   async (req: Request, res: Response) => {
     try {
       if (!req.user) {
-        return res.redirect(`${process.env.FRONTEND_URL}/auth/error`);
+        return res.redirect(`${FRONTEND_URL}/auth/error`);
       }
       
       // Generate tokens
       const tokens = generateTokens(req.user._id, req.user.email, req.user.role);
       
       // Redirect to frontend with tokens (in production, use httpOnly cookies)
-      const redirectUrl = `${process.env.FRONTEND_URL}/auth/success?token=${tokens.accessToken}&refresh=${tokens.refreshToken}`;
+      const redirectUrl = `${FRONTEND_URL}/auth/success?token=${tokens.accessToken}&refresh=${tokens.refreshToken}`;
       res.redirect(redirectUrl);
     } catch (error) {
-      res.redirect(`${process.env.FRONTEND_URL}/auth/error`);
+      res.redirect(`${FRONTEND_URL}/auth/error`);
     }
   }
 );

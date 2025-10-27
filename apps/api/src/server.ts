@@ -5,9 +5,10 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
-import { logger } from "@repo/logger";
+import { log } from "@repo/logger";
 import passport from "./config/passport";
 import routes from "./routes";
+import { CORS_ORIGIN } from "./config/constants";
 
 // Load environment variables
 dotenv.config();
@@ -36,12 +37,12 @@ export const createServer = (): Express => {
   app
     .disable("x-powered-by")
     .use(morgan("dev", {
-      stream: { write: message => logger.info(message.trim()) }
+      stream: { write: message => log(message.trim()) }
     }))
     .use(urlencoded({ extended: true, limit: '10mb' }))
     .use(json({ limit: '10mb' }))
     .use(cors({
-      origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+      origin: CORS_ORIGIN,
       credentials: true,
     }));
 
@@ -76,7 +77,7 @@ export const createServer = (): Express => {
 
   // Error handling middleware
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    logger.error('Unhandled error:', err);
+    log('Unhandled error:' + err);
     
     if (err.name === 'MulterError') {
       return res.status(400).json({

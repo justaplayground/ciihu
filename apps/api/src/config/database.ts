@@ -1,9 +1,10 @@
 import mongoose from 'mongoose';
-import { logger } from '@repo/logger';
+import { log } from '@repo/logger';
+import { MONGODB_URI } from './constants';
 
 const connectDatabase = async (): Promise<void> => {
   try {
-    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/video-platform';
+    const mongoURI = MONGODB_URI;
     
     const conn = await mongoose.connect(mongoURI, {
       // Connection options for production
@@ -11,34 +12,33 @@ const connectDatabase = async (): Promise<void> => {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
       bufferCommands: false,
-      bufferMaxEntries: 0,
     });
 
-    logger.info(`MongoDB Connected: ${conn.connection.host}`);
+    log(`MongoDB Connected: ${conn.connection.host}`);
     
     // Handle connection events
     mongoose.connection.on('error', (err) => {
-      logger.error('MongoDB connection error:', err);
+      log('MongoDB connection error:' + err);
     });
 
     mongoose.connection.on('disconnected', () => {
-      logger.warn('MongoDB disconnected');
+      log('MongoDB disconnected');
     });
 
     // Graceful shutdown
     process.on('SIGINT', async () => {
       try {
         await mongoose.connection.close();
-        logger.info('MongoDB connection closed through app termination');
+        log('MongoDB connection closed through app termination');
         process.exit(0);
       } catch (err) {
-        logger.error('Error during database disconnection:', err);
+        log('Error during database disconnection:' + err);
         process.exit(1);
       }
     });
 
   } catch (error) {
-    logger.error('Error connecting to MongoDB:', error);
+    log('Error connecting to MongoDB:' + error);
     process.exit(1);
   }
 };

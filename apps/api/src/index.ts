@@ -1,9 +1,10 @@
 import { createServer } from "./server";
 import connectDatabase from "./config/database";
 import { connectRedis } from "./config/redis";
-import { logger } from "@repo/logger";
+import { log } from "@repo/logger";
+import { PORT, NODE_ENV } from "./config/constants";
 
-const port = process.env.PORT || 3001;
+const port = PORT;
 
 // Initialize database and start server
 const startServer = async () => {
@@ -16,12 +17,12 @@ const startServer = async () => {
     const app = createServer();
     
     app.listen(port, () => {
-      logger.info(`🚀 Video Streaming Platform API running on port ${port}`);
-      logger.info(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-      logger.info(`📝 Health check: http://localhost:${port}/status`);
+      log(`🚀 Video Streaming Platform API running on port ${port}`);
+      log(`🌐 Environment: ${NODE_ENV}`);
+      log(`📝 Health check: http://localhost:${port}/status`);
     });
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    log('Failed to start server:' + error);
     process.exit(1);
   }
 };

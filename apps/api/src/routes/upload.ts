@@ -6,8 +6,16 @@ import { VideoModel } from '../models';
 import { authenticateJWT, requireCreator } from '../middleware/auth';
 import { validate, videoValidationSchemas } from '../middleware/validation';
 import { ApiResponse, R2UploadResponse } from '@repo/shared-types';
+import { log } from '@repo/logger';
+import { 
+  R2_ACCOUNT_ID, 
+  R2_ACCESS_KEY_ID, 
+  R2_SECRET_ACCESS_KEY, 
+  R2_BUCKET_NAME, 
+  R2_PUBLIC_URL 
+} from '../config/constants';
 
-const router = Router();
+const router: Router = Router();
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -29,10 +37,10 @@ const upload = multer({
 // Configure Cloudflare R2 client
 const r2Client = new S3Client({
   region: 'auto',
-  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
   credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+    accessKeyId: R2_ACCESS_KEY_ID,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
   },
 });
 
@@ -53,13 +61,13 @@ router.post('/presigned-url', authenticateJWT, requireCreator, async (req: Reque
     
     // Generate pre-signed URL for upload
     const command = new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
+      Bucket: R2_BUCKET_NAME,
       Key: key,
       ContentType: contentType,
     });
     
     const uploadUrl = await getSignedUrl(r2Client, command, { expiresIn: 3600 }); // 1 hour
-    const publicUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
+    const publicUrl = `${R2_PUBLIC_URL}/${key}`;
     
     const response: R2UploadResponse = {
       success: true,
@@ -107,14 +115,14 @@ router.post('/video', authenticateJWT, requireCreator, validate(videoValidationS
     });
     
     // Trigger video processing
-    const { videoProcessingService } = await import('../services/videoProcessingService');
+    const { videoProcessingService } = await import('../services/videoProcessingService.js');
     await videoProcessingService.queueVideoProcessing({
       videoId: video._id.toString(),
       inputUrl: originalUrl,
       outputPrefix: `processed/${userId}/${video._id}`,
     });
     
-    logger.info(`Video processing queued for video ${video._id}`);
+    log(`Video processing queued for video ${video._id}`);
     
     res.status(201).json({
       success: true,
@@ -147,7 +155,7 @@ router.post('/direct', authenticateJWT, requireCreator, upload.single('video'), 
     
     // Upload to R2
     const command = new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
+      Bucket: R2_BUCKET_NAME,
       Key: key,
       Body: req.file.buffer,
       ContentType: req.file.mimetype,
@@ -155,7 +163,7 @@ router.post('/direct', authenticateJWT, requireCreator, upload.single('video'), 
     
     await r2Client.send(command);
     
-    const videoUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
+    const videoUrl = `${R2_PUBLIC_URL}/${key}`;
     
     // Create video record
     const video = await VideoModel.create({
@@ -171,14 +179,14 @@ router.post('/direct', authenticateJWT, requireCreator, upload.single('video'), 
     });
     
     // Trigger video processing
-    const { videoProcessingService } = await import('../services/videoProcessingService');
+    const { videoProcessingService } = await import('../services/videoProcessingService.js');
     await videoProcessingService.queueVideoProcessing({
       videoId: video._id.toString(),
       inputUrl: videoUrl,
       outputPrefix: `processed/${userId}/${video._id}`,
     });
     
-    logger.info(`Video processing queued for video ${video._id}`);
+    log(`Video processing queued for video ${video._id}`);
     
     res.status(201).json({
       success: true,
