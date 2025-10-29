@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { Header } from "@/components/header";
+import { useAuth } from "@/lib/auth-context";
 import { 
   Upload,
   Play,
@@ -27,6 +30,35 @@ import {
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState("overview");
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render dashboard if not logged in
+  if (!user) {
+    return null;
+  }
 
   // Mock analytics data
   const analyticsData = {
@@ -63,14 +95,15 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-background">
+      <Header />
+      <div className="max-w-7xl mx-auto p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold">Creator Dashboard</h1>
             <p className="text-muted-foreground mt-1">
-              Manage your content and track your channel's performance
+              Welcome back, {user.name}! Manage your content and track your channel's performance
             </p>
           </div>
           <div className="flex space-x-3">
@@ -423,3 +456,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

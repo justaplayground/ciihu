@@ -3,8 +3,21 @@ import { VideoModel, UserModel, ViewModel, LikeModel, CommentModel } from '../mo
 import { authenticateJWT, optionalAuth, requireCreator, requireOwnership } from '../middleware/auth';
 import { validate, videoValidationSchemas, commentValidationSchemas, likeValidationSchema, paginationValidationSchema } from '../middleware/validation';
 import { ApiResponse, PaginatedResponse, SearchFilters } from '@repo/shared-types';
+import { S3Client, DeleteObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME } from '../config/constants';
+import { log } from '@repo/logger';
 
-const router = Router();
+const router: Router = Router();
+
+// Configure Cloudflare R2 client
+const r2Client = new S3Client({
+  region: 'auto',
+  endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: R2_ACCESS_KEY_ID,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
+  },
+});
 
 // Get video by ID
 router.get('/:videoId', optionalAuth, async (req: Request, res: Response) => {
@@ -131,6 +144,14 @@ router.delete('/:videoId', authenticateJWT, async (req: Request, res: Response) 
       } as ApiResponse);
     }
     
+    // Delete video files from R2 storage
+    try {
+      await deleteVideoFromR2(video);
+    } catch (r2Error) {
+      log(`Failed to delete R2 files for video ${videoId}: ${r2Error}`);
+      // Continue with database deletion even if R2 deletion fails
+    }
+    
     // Delete related data
     await Promise.all([
       VideoModel.findByIdAndDelete(videoId),
@@ -138,8 +159,6 @@ router.delete('/:videoId', authenticateJWT, async (req: Request, res: Response) 
       LikeModel.deleteMany({ videoId }),
       ViewModel.deleteMany({ videoId }),
     ]);
-    
-    // TODO: Delete video files from R2 storage
     
     res.json({
       success: true,
@@ -420,5 +439,105 @@ router.post('/:videoId/comments', authenticateJWT, validate(commentValidationSch
     } as ApiResponse);
   }
 });
+
+/**
+ * Helper function to delete all video files from R2 storage
+ */
+async function deleteVideoFromR2(video: any): Promise<void> {
+  try {
+    const keysToDelete: string[] = [];
+    
+    // Extract key from original URL
+    if (video.originalUrl) {
+      const originalKey = extractR2KeyFromUrl(video.originalUrl);
+      if (originalKey) keysToDelete.push(originalKey);
+    }
+    
+    // Extract key from video URL (master playlist)
+    if (video.videoUrl) {
+      const videoKey = extractR2KeyFromUrl(video.videoUrl);
+      if (videoKey) keysToDelete.push(videoKey);
+    }
+    
+    // Extract key from thumbnail
+    if (video.thumbnail) {
+      const thumbnailKey = extractR2KeyFromUrl(video.thumbnail);
+      if (thumbnailKey) keysToDelete.push(thumbnailKey);
+    }
+    
+    // Get the base prefix for this video (e.g., processed/userId/videoId/)
+    const videoIdStr = video._id.toString();
+    const creatorId = typeof video.creator === 'string' ? video.creator : video.creator._id.toString();
+    const processedPrefix = `processed/${creatorId}/${videoIdStr}/`;
+    const uploadPrefix = `uploads/${creatorId}/`;
+    
+    // List all objects with the processed prefix
+    const listCommand = new ListObjectsV2Command({
+      Bucket: R2_BUCKET_NAME,
+      Prefix: processedPrefix,
+    });
+    
+    const listedObjects = await r2Client.send(listCommand);
+    if (listedObjects.Contents && listedObjects.Contents.length > 0) {
+      listedObjects.Contents.forEach(obj => {
+        if (obj.Key) keysToDelete.push(obj.Key);
+      });
+    }
+    
+    // Delete all collected keys
+    if (keysToDelete.length > 0) {
+      log(`Deleting ${keysToDelete.length} objects from R2 for video ${videoIdStr}`);
+      
+      // R2/S3 supports batch deletion up to 1000 objects
+      const chunks = chunkArray(keysToDelete, 1000);
+      
+      for (const chunk of chunks) {
+        const deleteCommand = new DeleteObjectsCommand({
+          Bucket: R2_BUCKET_NAME,
+          Delete: {
+            Objects: chunk.map(key => ({ Key: key })),
+            Quiet: true,
+          },
+        });
+        
+        await r2Client.send(deleteCommand);
+      }
+      
+      log(`Successfully deleted ${keysToDelete.length} objects from R2`);
+    }
+  } catch (error) {
+    log(`Error deleting video files from R2: ${error}`);
+    throw error;
+  }
+}
+
+/**
+ * Extract R2 key from URL
+ */
+function extractR2KeyFromUrl(url: string): string | null {
+  try {
+    if (!url) return null;
+    if (!url.includes('r2.cloudflarestorage.com') && !url.includes('.r2.dev')) {
+      return null;
+    }
+    
+    const urlObj = new URL(url);
+    return urlObj.pathname.substring(1); // Remove leading slash
+  } catch (error) {
+    log(`Failed to extract R2 key from URL ${url}: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Split array into chunks
+ */
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
+}
 
 export default router;

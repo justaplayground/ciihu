@@ -1,45 +1,14 @@
 import { VideoPlayer } from "@/components/video-player";
+import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Play, Search, Menu, User, Upload } from "lucide-react";
+import { Play } from "lucide-react";
 
 export default function HomePage(): JSX.Element {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto flex h-16 items-center px-4">
-          <div className="flex items-center space-x-4">
-            <Button variant="ghost" size="icon">
-              <Menu className="h-5 w-5" />
-            </Button>
-            <h1 className="text-xl font-bold text-primary">CiiHu</h1>
-          </div>
-          
-          {/* Search */}
-          <div className="flex-1 max-w-2xl mx-8">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search videos..."
-                className="w-full pl-10 pr-4 rounded-full"
-              />
-            </div>
-          </div>
-
-          {/* User actions */}
-          <div className="flex items-center space-x-2">
-            <Button variant="ghost" size="icon">
-              <Upload className="h-5 w-5" />
-            </Button>
-            <Button variant="ghost" size="icon">
-              <User className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-      </header>
+      <Header />
 
       {/* Main content */}
       <main className="container mx-auto px-4 py-8">

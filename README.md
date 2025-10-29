@@ -33,9 +33,9 @@ A self-hosted video distribution and streaming platform similar to YouTube, buil
 
 ### Infrastructure
 - **Docker & Docker Compose** - Containerization
-- **NGINX** - Reverse proxy and media serving
-- **FFmpeg** - Video transcoding and processing
-- **Cloudflare R2** - Object storage (S3-compatible)
+- **NGINX** - Reverse proxy
+- **FFmpeg** - Video transcoding and processing (in API service)
+- **Cloudflare R2** - Object storage for videos and media (S3-compatible)
 
 ### Development
 - **Turborepo** - Monorepo build system
@@ -89,6 +89,8 @@ ciihu/
    cp apps/api/.env.example apps/api/.env
    cp apps/web/.env.example apps/web/.env
    ```
+   
+   **Important**: Configure Cloudflare R2 before proceeding. See [R2_STORAGE_SETUP.md](.docs/deprecated/R2_STORAGE_SETUP.md) for instructions.
 
 4. **Start the development environment**
    ```bash
@@ -194,10 +196,19 @@ docker-compose up -d --scale api=2
 ### Services Included
 - **MongoDB** - Primary database
 - **Redis** - Caching and sessions  
-- **NGINX** - Reverse proxy and media server
-- **API** - Express.js backend
+- **NGINX** - Reverse proxy
+- **API** - Express.js backend (includes FFmpeg video processing)
 - **Web** - Next.js frontend
-- **FFmpeg Worker** - Video processing
+
+### Storage Configuration
+
+This application uses **Cloudflare R2** for object storage. Before deployment:
+
+1. Set up a Cloudflare R2 bucket
+2. Configure the required environment variables
+3. See [R2_STORAGE_SETUP.md](.docs/deprecated/R2_STORAGE_SETUP.md) for detailed setup instructions
+
+**Note**: All video files (uploads, processed videos, thumbnails) are stored in R2, not in local volumes.
 
 ## 🔧 Development
 

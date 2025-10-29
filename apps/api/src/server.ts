@@ -4,14 +4,10 @@ import morgan from "morgan";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import dotenv from "dotenv";
 import { log } from "@repo/logger";
 import passport from "./config/passport";
 import routes from "./routes";
 import { CORS_ORIGIN } from "./config/constants";
-
-// Load environment variables
-dotenv.config();
 
 export const createServer = (): Express => {
   const app = express();

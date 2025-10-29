@@ -23,13 +23,14 @@ passport.use(new JwtStrategy(jwtOptions, async (payload: JWTPayload, done) => {
   }
 }));
 
-// Google OAuth Strategy
+// Google OAuth Strategy for Login (doesn't create new users)
 if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
-  passport.use(new GoogleStrategy({
+  passport.use('google-login', new GoogleStrategy({
     clientID: GOOGLE_CLIENT_ID,
     clientSecret: GOOGLE_CLIENT_SECRET,
     callbackURL: GOOGLE_CALLBACK_URL,
-  }, async (accessToken, refreshToken, profile, done) => {
+    passReqToCallback: true,
+  }, async (req, accessToken, refreshToken, profile, done) => {
     try {
       // Check if user already exists with Google ID
       let user = await UserModel.findOne({ googleId: profile.id });
@@ -51,6 +52,35 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
         return done(null, user);
       }
 
+      // User doesn't exist - return error for login
+      return done(null, false, { message: 'No account found. Please register first.' });
+    } catch (error) {
+      return done(error, false);
+    }
+  }));
+
+  // Google OAuth Strategy for Register (creates new users)
+  passport.use('google-register', new GoogleStrategy({
+    clientID: GOOGLE_CLIENT_ID,
+    clientSecret: GOOGLE_CLIENT_SECRET,
+    callbackURL: process.env.GOOGLE_REGISTER_CALLBACK_URL || '/api/auth/google/register/callback',
+    passReqToCallback: true,
+  }, async (req, accessToken, refreshToken, profile, done) => {
+    try {
+      // Check if user already exists with Google ID
+      let user = await UserModel.findOne({ googleId: profile.id });
+      
+      if (user) {
+        return done(null, false, { message: 'Account already exists. Please login instead.' });
+      }
+
+      // Check if user exists with same email
+      user = await UserModel.findOne({ email: profile.emails?.[0]?.value });
+      
+      if (user) {
+        return done(null, false, { message: 'Email already registered. Please login instead.' });
+      }
+
       // Create new user
       const newUser = new UserModel({
         googleId: profile.id,
@@ -62,7 +92,7 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
       await newUser.save();
       return done(null, newUser);
     } catch (error) {
-      return done(error, null);
+      return done(error, false);
     }
   }));
 }

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { API_HOST } from '@/constants';
-import type { Video, ApiResponse, PaginatedResponse, Comment } from '@repo/shared-types';
+import type { Video, ApiResponse, PaginatedResponse, Comment, User, AuthTokens } from '@repo/shared-types';
 
 // Create axios instance with default config
 const apiClient = axios.create({
@@ -10,6 +10,86 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Token management
+export const tokenManager = {
+  getAccessToken: () => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('accessToken');
+    }
+    return null;
+  },
+  getRefreshToken: () => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('refreshToken');
+    }
+    return null;
+  },
+  setTokens: (tokens: AuthTokens) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('accessToken', tokens.accessToken);
+      localStorage.setItem('refreshToken', tokens.refreshToken);
+    }
+  },
+  clearTokens: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+    }
+  },
+};
+
+// Request interceptor to add auth token
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = tokenManager.getAccessToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor to handle token refresh
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    // If error is 401 and we haven't tried to refresh yet
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const refreshToken = tokenManager.getRefreshToken();
+        if (!refreshToken) {
+          tokenManager.clearTokens();
+          window.location.href = '/login';
+          return Promise.reject(error);
+        }
+
+        // Try to refresh the token
+        const response = await axios.post<ApiResponse<{ tokens: AuthTokens }>>(
+          `${API_HOST}/api/auth/refresh`,
+          { refreshToken }
+        );
+
+        if (response.data.success && response.data.data?.tokens) {
+          tokenManager.setTokens(response.data.data.tokens);
+          originalRequest.headers.Authorization = `Bearer ${response.data.data.tokens.accessToken}`;
+          return apiClient(originalRequest);
+        }
+      } catch (refreshError) {
+        tokenManager.clearTokens();
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 // Video API
 export const videoApi = {
@@ -185,22 +265,26 @@ export const authApi = {
   /**
    * Login with email and password
    */
-  login: async (email: string, password: string) => {
-    const response = await apiClient.post('/auth/login', { email, password });
-    if (!response.data.success) {
+  login: async (email: string, password: string): Promise<{ user: User; tokens: AuthTokens }> => {
+    const response = await apiClient.post<ApiResponse<{ user: User; tokens: AuthTokens }>>('/auth/login', { email, password });
+    if (!response.data.success || !response.data.data) {
       throw new Error(response.data.error || 'Failed to login');
     }
+    // Save tokens
+    tokenManager.setTokens(response.data.data.tokens);
     return response.data.data;
   },
 
   /**
    * Register new user
    */
-  register: async (email: string, password: string, name: string) => {
-    const response = await apiClient.post('/auth/register', { email, password, name });
-    if (!response.data.success) {
+  register: async (email: string, password: string, name: string): Promise<{ user: User; tokens: AuthTokens }> => {
+    const response = await apiClient.post<ApiResponse<{ user: User; tokens: AuthTokens }>>('/auth/register', { email, password, name });
+    if (!response.data.success || !response.data.data) {
       throw new Error(response.data.error || 'Failed to register');
     }
+    // Save tokens
+    tokenManager.setTokens(response.data.data.tokens);
     return response.data.data;
   },
 
@@ -208,21 +292,43 @@ export const authApi = {
    * Logout
    */
   logout: async () => {
-    const response = await apiClient.post('/auth/logout');
-    if (!response.data.success) {
-      throw new Error(response.data.error || 'Failed to logout');
+    try {
+      await apiClient.post('/auth/logout');
+    } catch (error) {
+      // Continue with logout even if API call fails
+    } finally {
+      // Always clear tokens
+      tokenManager.clearTokens();
     }
   },
 
   /**
    * Get current user
    */
-  getCurrentUser: async () => {
-    const response = await apiClient.get('/auth/me');
-    if (!response.data.success) {
+  getCurrentUser: async (): Promise<User | null> => {
+    try {
+      const response = await apiClient.get<ApiResponse<User>>('/auth/me');
+      if (!response.data.success || !response.data.data) {
+        return null;
+      }
+      return response.data.data;
+    } catch (error) {
       return null;
     }
-    return response.data.data;
+  },
+
+  /**
+   * Get Google OAuth login URL
+   */
+  getGoogleLoginUrl: (): string => {
+    return `${API_HOST}/api/auth/google/login`;
+  },
+
+  /**
+   * Get Google OAuth register URL
+   */
+  getGoogleRegisterUrl: (): string => {
+    return `${API_HOST}/api/auth/google/register`;
   },
 };
 

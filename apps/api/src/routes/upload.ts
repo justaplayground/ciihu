@@ -56,8 +56,22 @@ router.post('/presigned-url', authenticateJWT, requireCreator, async (req: Reque
       } as ApiResponse);
     }
     
+    // Validate content type
+    const allowedTypes = ['video/mp4', 'video/avi', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
+    if (!allowedTypes.includes(contentType)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid content type. Only video files are allowed.',
+      } as ApiResponse);
+    }
+    
+    // Sanitize filename
+    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+    
     // Generate unique key
-    const key = `uploads/${req.user!._id}/${Date.now()}-${filename}`;
+    const key = `uploads/${req.user!._id}/${Date.now()}-${sanitizedFilename}`;
+    
+    log(`Generating pre-signed URL for key: ${key}`);
     
     // Generate pre-signed URL for upload
     const command = new PutObjectCommand({
@@ -81,9 +95,10 @@ router.post('/presigned-url', authenticateJWT, requireCreator, async (req: Reque
       data: response,
     } as ApiResponse);
   } catch (error) {
+    log(`Error generating pre-signed URL: ${error}`);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate upload URL',
+      error: error instanceof Error ? error.message : 'Failed to generate upload URL',
     } as ApiResponse);
   }
 });
@@ -150,18 +165,30 @@ router.post('/direct', authenticateJWT, requireCreator, upload.single('video'), 
     const { title, description, tags, visibility } = req.body;
     const userId = req.user!._id;
     
+    // Sanitize filename
+    const sanitizedFilename = req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    
     // Generate unique key for R2
-    const key = `uploads/${userId}/${Date.now()}-${req.file.originalname}`;
+    const key = `uploads/${userId}/${Date.now()}-${sanitizedFilename}`;
+    
+    log(`Uploading video to R2: ${key} (${req.file.size} bytes)`);
     
     // Upload to R2
-    const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype,
-    });
-    
-    await r2Client.send(command);
+    try {
+      const command = new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: key,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+        ContentLength: req.file.size,
+      });
+      
+      await r2Client.send(command);
+      log(`Successfully uploaded to R2: ${key}`);
+    } catch (r2Error) {
+      log(`R2 upload failed: ${r2Error}`);
+      throw new Error(`Failed to upload video to storage: ${r2Error instanceof Error ? r2Error.message : 'Unknown error'}`);
+    }
     
     const videoUrl = `${R2_PUBLIC_URL}/${key}`;
     
@@ -179,14 +206,21 @@ router.post('/direct', authenticateJWT, requireCreator, upload.single('video'), 
     });
     
     // Trigger video processing
-    const { videoProcessingService } = await import('../services/videoProcessingService.js');
-    await videoProcessingService.queueVideoProcessing({
-      videoId: video._id.toString(),
-      inputUrl: videoUrl,
-      outputPrefix: `processed/${userId}/${video._id}`,
-    });
-    
-    log(`Video processing queued for video ${video._id}`);
+    try {
+      const { videoProcessingService } = await import('../services/videoProcessingService.js');
+      await videoProcessingService.queueVideoProcessing({
+        videoId: video._id.toString(),
+        inputUrl: videoUrl,
+        outputPrefix: `processed/${userId}/${video._id}`,
+      });
+      
+      log(`Video processing queued for video ${video._id}`);
+    } catch (processingError) {
+      log(`Failed to queue video processing: ${processingError}`);
+      // Update video status to error
+      await VideoModel.findByIdAndUpdate(video._id, { status: 'error' });
+      throw new Error('Failed to queue video processing');
+    }
     
     res.status(201).json({
       success: true,
@@ -194,9 +228,10 @@ router.post('/direct', authenticateJWT, requireCreator, upload.single('video'), 
       message: 'Video uploaded successfully. Processing will begin shortly.',
     } as ApiResponse);
   } catch (error) {
+    log(`Error in direct upload: ${error}`);
     res.status(500).json({
       success: false,
-      error: 'Failed to upload video',
+      error: error instanceof Error ? error.message : 'Failed to upload video',
     } as ApiResponse);
   }
 });

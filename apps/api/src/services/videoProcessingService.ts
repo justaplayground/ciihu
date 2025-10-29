@@ -107,14 +107,15 @@ export class VideoProcessingService {
    */
   private async processVideo(job: VideoProcessingJob): Promise<void> {
     const { videoId, inputUrl, outputPrefix } = job;
+    const tempDir = `/tmp/video-processing/${videoId}`;
     
     try {
       // Update status to processing
       await this.updateVideoStatus(videoId, 'analyzing', 10, 'Analyzing video file');
 
       // Download and analyze the video
-      const tempDir = `/tmp/video-processing/${videoId}`;
       await fs.mkdir(tempDir, { recursive: true });
+      log(`Created temp directory: ${tempDir}`);
       
       const inputPath = path.join(tempDir, 'input.mp4');
       await this.downloadFile(inputUrl, inputPath);
@@ -224,14 +225,19 @@ export class VideoProcessingService {
 
       await this.updateVideoStatus(videoId, 'completed', 100, 'Video processing completed');
 
-      // Cleanup temporary files
-      await fs.rm(tempDir, { recursive: true, force: true });
-
       log(`Video ${videoId} processed successfully`);
     } catch (error) {
       log(`Error processing video ${videoId}: ${error}`);
       await this.updateVideoStatus(videoId, 'error', 0, 'Processing failed', String(error));
       throw error;
+    } finally {
+      // Always cleanup temporary files, even on error
+      try {
+        await this.cleanupTempDirectory(tempDir);
+      } catch (cleanupError) {
+        log(`Failed to cleanup temp directory ${tempDir}: ${cleanupError}`);
+        // Don't throw here, just log - cleanup failures shouldn't affect the main process result
+      }
     }
   }
 
@@ -239,34 +245,47 @@ export class VideoProcessingService {
    * Download file from URL
    */
   private async downloadFile(url: string, outputPath: string): Promise<void> {
-    if (url.includes('r2.cloudflarestorage.com')) {
-      // Download from R2
-      const key = url.split('/').pop() || '';
-      const command = new GetObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: key,
-      });
-      
-      const response = await r2Client.send(command);
-      if (response.Body) {
-        const stream = response.Body as Readable;
-        const writeStream = require('fs').createWriteStream(outputPath);
-        stream.pipe(writeStream);
+    try {
+      if (url.includes('r2.cloudflarestorage.com') || url.includes('.r2.dev')) {
+        // Download from R2
+        // Extract the key from the URL (everything after the domain and bucket path)
+        const urlObj = new URL(url);
+        const key = urlObj.pathname.substring(1); // Remove leading slash
         
-        return new Promise((resolve, reject) => {
-          writeStream.on('finish', resolve);
-          writeStream.on('error', reject);
+        log(`Downloading from R2: ${key}`);
+        
+        const command = new GetObjectCommand({
+          Bucket: R2_BUCKET_NAME,
+          Key: key,
         });
+        
+        const response = await r2Client.send(command);
+        if (response.Body) {
+          const stream = response.Body as Readable;
+          const writeStream = require('fs').createWriteStream(outputPath);
+          stream.pipe(writeStream);
+          
+          return new Promise((resolve, reject) => {
+            writeStream.on('finish', resolve);
+            writeStream.on('error', reject);
+          });
+        } else {
+          throw new Error('Empty response body from R2');
+        }
+      } else {
+        // Download from external URL
+        log(`Downloading from external URL: ${url}`);
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to download video: ${response.statusText}`);
+        }
+        
+        const arrayBuffer = await response.arrayBuffer();
+        await fs.writeFile(outputPath, Buffer.from(arrayBuffer));
       }
-    } else {
-      // Download from external URL
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to download video: ${response.statusText}`);
-      }
-      
-      const arrayBuffer = await response.arrayBuffer();
-      await fs.writeFile(outputPath, Buffer.from(arrayBuffer));
+    } catch (error) {
+      log(`Error downloading file from ${url}: ${error}`);
+      throw new Error(`Failed to download file: ${error}`);
     }
   }
 
@@ -347,23 +366,38 @@ export class VideoProcessingService {
     r2Prefix: string,
     resolution: string
   ): Promise<string> {
-    const files = await fs.readdir(localDir);
-    
-    for (const file of files) {
-      const filePath = path.join(localDir, file);
-      const key = `${r2Prefix}/${file}`;
+    try {
+      const files = await fs.readdir(localDir);
+      log(`Uploading ${files.length} files to R2 for ${resolution}`);
       
-      const fileBuffer = await fs.readFile(filePath);
+      for (const file of files) {
+        const filePath = path.join(localDir, file);
+        const key = `${r2Prefix}/${file}`;
+        
+        try {
+          const fileBuffer = await fs.readFile(filePath);
+          const fileStats = await fs.stat(filePath);
+          
+          await r2Client.send(new PutObjectCommand({
+            Bucket: R2_BUCKET_NAME,
+            Key: key,
+            Body: fileBuffer,
+            ContentType: file.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/MP2T',
+            ContentLength: fileStats.size,
+          }));
+          
+          log(`Uploaded: ${key} (${fileStats.size} bytes)`);
+        } catch (uploadError) {
+          log(`Failed to upload ${key}: ${uploadError}`);
+          throw new Error(`Failed to upload file ${file}: ${uploadError}`);
+        }
+      }
       
-      await r2Client.send(new PutObjectCommand({
-        Bucket: R2_BUCKET_NAME,
-        Key: key,
-        Body: fileBuffer,
-        ContentType: file.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/MP2T',
-      }));
+      return `${R2_PUBLIC_URL}/${r2Prefix}/playlist.m3u8`;
+    } catch (error) {
+      log(`Error uploading HLS files: ${error}`);
+      throw error;
     }
-    
-    return `${R2_PUBLIC_URL}/${r2Prefix}/playlist.m3u8`;
   }
 
   /**
@@ -373,23 +407,31 @@ export class VideoProcessingService {
     resolutions: any[],
     outputPrefix: string
   ): Promise<string> {
-    let masterPlaylist = '#EXTM3U\n#EXT-X-VERSION:3\n\n';
-    
-    for (const resolution of resolutions) {
-      masterPlaylist += `#EXT-X-STREAM-INF:BANDWIDTH=${resolution.bitrate},RESOLUTION=1280x${resolution.height},CODECS="avc1.4d401f,mp4a.40.2"\n`;
-      masterPlaylist += `${resolution.resolution}/playlist.m3u8\n\n`;
+    try {
+      let masterPlaylist = '#EXTM3U\n#EXT-X-VERSION:3\n\n';
+      
+      for (const resolution of resolutions) {
+        masterPlaylist += `#EXT-X-STREAM-INF:BANDWIDTH=${resolution.bitrate},RESOLUTION=1280x${resolution.height},CODECS="avc1.4d401f,mp4a.40.2"\n`;
+        masterPlaylist += `${resolution.resolution}/playlist.m3u8\n\n`;
+      }
+      
+      const key = `${outputPrefix}/master.m3u8`;
+      
+      log(`Creating master playlist: ${key}`);
+      
+      await r2Client.send(new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: key,
+        Body: masterPlaylist,
+        ContentType: 'application/x-mpegURL',
+        ContentLength: Buffer.byteLength(masterPlaylist),
+      }));
+      
+      return `${R2_PUBLIC_URL}/${key}`;
+    } catch (error) {
+      log(`Error creating master playlist: ${error}`);
+      throw new Error(`Failed to create master playlist: ${error}`);
     }
-    
-    const key = `${outputPrefix}/master.m3u8`;
-    
-    await r2Client.send(new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
-      Body: masterPlaylist,
-      ContentType: 'application/x-mpegURL',
-    }));
-    
-    return `${R2_PUBLIC_URL}/${key}`;
   }
 
   /**
@@ -408,22 +450,34 @@ export class VideoProcessingService {
         })
         .on('end', async () => {
           try {
+            log(`Thumbnail generated: ${tempThumbnail}`);
             const thumbnailBuffer = await fs.readFile(tempThumbnail);
+            const thumbnailStats = await fs.stat(tempThumbnail);
+            
+            log(`Uploading thumbnail to R2: ${r2Key} (${thumbnailStats.size} bytes)`);
             
             await r2Client.send(new PutObjectCommand({
               Bucket: R2_BUCKET_NAME,
               Key: r2Key,
               Body: thumbnailBuffer,
               ContentType: 'image/jpeg',
+              ContentLength: thumbnailStats.size,
             }));
+            
+            log(`Thumbnail uploaded successfully: ${r2Key}`);
             
             await fs.unlink(tempThumbnail).catch(() => {}); // Clean up
             resolve(`${R2_PUBLIC_URL}/${r2Key}`);
           } catch (error) {
-            reject(error);
+            log(`Error uploading thumbnail: ${error}`);
+            await fs.unlink(tempThumbnail).catch(() => {}); // Clean up even on error
+            reject(new Error(`Failed to upload thumbnail: ${error}`));
           }
         })
-        .on('error', reject);
+        .on('error', (error) => {
+          log(`Error generating thumbnail: ${error}`);
+          reject(new Error(`Failed to generate thumbnail: ${error}`));
+        });
     });
   }
 
@@ -524,6 +578,23 @@ export class VideoProcessingService {
     } catch (error) {
       log(`Failed to get processing status from Redis: ${error}`);
       return null;
+    }
+  }
+
+  /**
+   * Cleanup temporary directory
+   */
+  private async cleanupTempDirectory(dirPath: string): Promise<void> {
+    try {
+      const exists = await fs.access(dirPath).then(() => true).catch(() => false);
+      if (exists) {
+        log(`Cleaning up temp directory: ${dirPath}`);
+        await fs.rm(dirPath, { recursive: true, force: true });
+        log(`Successfully cleaned up: ${dirPath}`);
+      }
+    } catch (error) {
+      log(`Error cleaning up temp directory ${dirPath}: ${error}`);
+      throw error;
     }
   }
 }

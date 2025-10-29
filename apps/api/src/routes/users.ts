@@ -4,7 +4,7 @@ import { authenticateJWT, optionalAuth } from '../middleware/auth';
 import { validate, paginationValidationSchema } from '../middleware/validation';
 import { ApiResponse, PaginatedResponse, UserProfile } from '@repo/shared-types';
 
-const router = Router();
+const router: Router = Router();
 
 // Get user profile by ID
 router.get('/:userId', optionalAuth, async (req: Request, res: Response) => {

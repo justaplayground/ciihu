@@ -40,7 +40,7 @@ const commentSchema = new Schema<CommentDocument>({
 }, {
   timestamps: true,
   toJSON: {
-    transform: (_doc, ret) => {
+    transform: (_doc, ret: any) => {
       delete ret.__v;
       return ret;
     },

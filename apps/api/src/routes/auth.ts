@@ -8,7 +8,8 @@ import { validate, userValidationSchemas } from '../middleware/validation';
 import { ApiResponse, AuthTokens } from '@repo/shared-types';
 import { FRONTEND_URL } from '../config/constants';
 
-const router = Router();
+const router: Router = Router();
+
 
 // Register new user
 router.post('/register', validate(userValidationSchemas.register), async (req: Request, res: Response) => {
@@ -93,26 +94,56 @@ router.post('/login', validate(userValidationSchemas.login), async (req: Request
   }
 });
 
-// Google OAuth login
-router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+// Google OAuth login - doesn't create new users
+router.get('/google/login', passport.authenticate('google-login', { scope: ['profile', 'email'] }));
 
-// Google OAuth callback
+// Google OAuth login callback
 router.get('/google/callback',
-  passport.authenticate('google', { session: false }),
+  passport.authenticate('google-login', { 
+    session: false,
+    failureRedirect: `${FRONTEND_URL}/login?error=no_account`,
+  }),
   async (req: Request, res: Response) => {
     try {
       if (!req.user) {
-        return res.redirect(`${FRONTEND_URL}/auth/error`);
+        return res.redirect(`${FRONTEND_URL}/login?error=login_failed`);
       }
       
       // Generate tokens
       const tokens = generateTokens(req.user._id, req.user.email, req.user.role);
       
-      // Redirect to frontend with tokens (in production, use httpOnly cookies)
-      const redirectUrl = `${FRONTEND_URL}/auth/success?token=${tokens.accessToken}&refresh=${tokens.refreshToken}`;
+      // Redirect to frontend with tokens
+      const redirectUrl = `${FRONTEND_URL}/auth/callback?token=${tokens.accessToken}&refresh=${tokens.refreshToken}`;
       res.redirect(redirectUrl);
     } catch (error) {
-      res.redirect(`${FRONTEND_URL}/auth/error`);
+      res.redirect(`${FRONTEND_URL}/login?error=server_error`);
+    }
+  }
+);
+
+// Google OAuth register - creates new users
+router.get('/google/register', passport.authenticate('google-register', { scope: ['profile', 'email'] }));
+
+// Google OAuth register callback
+router.get('/google/register/callback',
+  passport.authenticate('google-register', { 
+    session: false,
+    failureRedirect: `${FRONTEND_URL}/register?error=already_exists`,
+  }),
+  async (req: Request, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.redirect(`${FRONTEND_URL}/register?error=registration_failed`);
+      }
+      
+      // Generate tokens
+      const tokens = generateTokens(req.user._id, req.user.email, req.user.role);
+      
+      // Redirect to frontend with tokens
+      const redirectUrl = `${FRONTEND_URL}/auth/callback?token=${tokens.accessToken}&refresh=${tokens.refreshToken}`;
+      res.redirect(redirectUrl);
+    } catch (error) {
+      res.redirect(`${FRONTEND_URL}/register?error=server_error`);
     }
   }
 );

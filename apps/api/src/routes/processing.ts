@@ -3,7 +3,7 @@ import { videoProcessingService } from '../services/videoProcessingService';
 import { optionalAuth } from '../middleware/auth';
 import { log } from '@repo/logger';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * Server-Sent Events endpoint for real-time video processing progress
