@@ -206,7 +206,7 @@ The player detects all available quality levels from the master playlist and dis
 ### 1. Upload a Video
 Use the upload endpoint to upload a new video:
 ```bash
-curl -X POST http://localhost:3001/api/upload \
+curl -X POST http://localhost:5001/api/upload \
   -F "video=@test-video.mp4" \
   -F "title=Test Video" \
   -F "description=Testing HLS playback"
@@ -248,7 +248,7 @@ When processing completes:
 Ensure these environment variables are set in `apps/web/.env.local`:
 
 ```bash
-NEXT_PUBLIC_API_HOST=http://localhost:3001
+NEXT_PUBLIC_API_HOST=http://localhost:5001
 ```
 
 ## Browser Compatibility

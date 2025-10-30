@@ -114,7 +114,7 @@ The video processing service automatically updates both the database and Redis w
 
 ```typescript
 const videoId = 'your-video-id';
-const eventSource = new EventSource(`http://localhost:3001/api/processing/${videoId}/stream`);
+const eventSource = new EventSource(`http://localhost:5001/api/processing/${videoId}/stream`);
 
 eventSource.onmessage = (event) => {
   const data = JSON.parse(event.data);
@@ -147,7 +147,7 @@ eventSource.onerror = (error) => {
 ```typescript
 const checkProgress = async (videoId: string) => {
   try {
-    const response = await fetch(`http://localhost:3001/api/processing/${videoId}/status`);
+    const response = await fetch(`http://localhost:5001/api/processing/${videoId}/status`);
     const result = await response.json();
     
     if (result.success) {
@@ -189,12 +189,12 @@ redis-server
 
 ### Test SSE Endpoint
 ```bash
-curl -N http://localhost:3001/api/processing/{videoId}/stream
+curl -N http://localhost:5001/api/processing/{videoId}/stream
 ```
 
 ### Test REST Endpoint
 ```bash
-curl http://localhost:3001/api/processing/{videoId}/status
+curl http://localhost:5001/api/processing/{videoId}/status
 ```
 
 ## Processing Stages Flow

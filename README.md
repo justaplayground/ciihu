@@ -16,6 +16,7 @@ A self-hosted video distribution and streaming platform similar to YouTube, buil
 ## 🛠 Technology Stack
 
 ### Frontend
+
 - **Next.js 14** - React framework with App Router
 - **TypeScript** - Type safety
 - **Tailwind CSS** - Utility-first styling
@@ -23,21 +24,24 @@ A self-hosted video distribution and streaming platform similar to YouTube, buil
 - **HLS.js** - HTML5 video streaming
 - **Sonner** - Toast notifications
 
-### Backend  
+### Backend
+
 - **Express.js** - Node.js web framework
-- **MongoDB** - Document database with Mongoose ODM
-- **Redis** - Caching and session storage
+- **MongoDB** - Document database with Mongoose ODM (using remote instance to reduce load on local machine)
+- **Redis** - Caching and session storage (using remote instance to reduce load on local machine)
 - **Passport.js** - Authentication middleware
 - **JWT** - Token-based authentication
 - **Multer** - File upload handling
 
 ### Infrastructure
+
 - **Docker & Docker Compose** - Containerization
 - **NGINX** - Reverse proxy
 - **FFmpeg** - Video transcoding and processing (in API service)
 - **Cloudflare R2** - Object storage for videos and media (S3-compatible)
 
 ### Development
+
 - **Turborepo** - Monorepo build system
 - **pnpm** - Fast package manager
 - **ESLint & Prettier** - Code quality and formatting
@@ -56,7 +60,6 @@ ciihu/
 │   ├── logger/           # Logging utilities
 │   └── eslint-config/    # ESLint configurations
 ├── docker/
-│   ├── mongodb/          # Database initialization
 │   ├── nginx/            # Reverse proxy config
 │   └── ffmpeg/           # Video processing scripts
 └── docker-compose.yml    # Container orchestration
@@ -69,88 +72,62 @@ ciihu/
 - **Node.js** 18+ and **pnpm**
 - **Docker** and **Docker Compose**
 - **FFmpeg** (for video processing)
+- **Remote MongoDB instance** (MongoDB Atlas, self-hosted, etc.)
+- **Remote Redis instance** (Redis Cloud, self-hosted, etc.)
 
 ### Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone <repository-url>
    cd ciihu
    ```
 
 2. **Install dependencies**
+
    ```bash
    pnpm install
    ```
 
 3. **Set up environment variables**
+
    ```bash
    # Copy example environment files
    cp apps/api/.env.example apps/api/.env
    cp apps/web/.env.example apps/web/.env
    ```
-   
-   **Important**: Configure Cloudflare R2 before proceeding. See [R2_STORAGE_SETUP.md](.docs/deprecated/R2_STORAGE_SETUP.md) for instructions.
+
+   **Important Configuration Required**:
+   - Configure your **remote MongoDB connection** in `apps/api/.env` (MONGODB_URI)
+   - Configure your **remote Redis connection** in `apps/api/.env` (REDIS_URL)
+   - Configure Cloudflare R2 storage credentials. See [R2_STORAGE_SETUP.md](.docs/deprecated/R2_STORAGE_SETUP.md) for instructions.
 
 4. **Start the development environment**
+
    ```bash
    # Start all services with Docker
    docker-compose up -d
-   
+
    # Or for development without Docker
    pnpm dev
    ```
 
 5. **Access the application**
    - **Frontend**: http://localhost:3000
-   - **API**: http://localhost:3001
-   - **MongoDB**: localhost:27017
-   - **Redis**: localhost:6379
-
-### Environment Configuration
-
-#### API Environment Variables (.env)
-```env
-# Database
-MONGODB_URI=mongodb://admin:password123@localhost:27017/video-platform?authSource=admin
-REDIS_URL=redis://:redis123@localhost:6379
-
-# JWT Authentication
-JWT_SECRET=your-super-secret-jwt-key-change-in-production
-JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-in-production
-
-# Google OAuth (optional)
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-
-# Cloudflare R2 Storage
-R2_ACCESS_KEY_ID=your-r2-access-key
-R2_SECRET_ACCESS_KEY=your-r2-secret-key
-R2_BUCKET_NAME=your-bucket-name
-R2_ACCOUNT_ID=your-account-id
-R2_PUBLIC_URL=https://your-public-url.com
-
-# Server Configuration
-PORT=3001
-NODE_ENV=development
-CORS_ORIGIN=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
-```
-
-#### Web Environment Variables (.env.local)
-```env
-NEXT_PUBLIC_API_URL=http://localhost:3001/api
-```
+   - **API**: http://localhost:5001
 
 ## 📱 Usage
 
 ### For Creators
+
 1. **Sign up** and enable creator mode in your profile
 2. **Upload videos** through the upload interface
 3. **Manage content** via the creator dashboard
 4. **View analytics** and engagement metrics
 
 ### For Viewers
+
 1. **Browse videos** on the homepage
 2. **Search and filter** content
 3. **Subscribe to creators** you like
@@ -159,22 +136,26 @@ NEXT_PUBLIC_API_URL=http://localhost:3001/api
 ### API Endpoints
 
 #### Authentication
+
 - `POST /api/auth/register` - User registration
 - `POST /api/auth/login` - User login
 - `GET /api/auth/google` - Google OAuth login
 - `POST /api/auth/refresh` - Refresh access token
 
 #### Videos
+
 - `GET /api/videos` - Search and browse videos
 - `GET /api/videos/:id` - Get video details
 - `POST /api/videos/:id/like` - Like/dislike video
 - `GET /api/videos/:id/comments` - Get video comments
 
 #### Upload
+
 - `POST /api/upload/presigned-url` - Get upload URL
 - `POST /api/upload/video` - Create video record
 
 #### Users
+
 - `GET /api/users/:id` - Get user profile
 - `POST /api/users/:id/subscribe` - Subscribe to user
 
@@ -194,11 +175,12 @@ docker-compose up -d --scale api=2
 ```
 
 ### Services Included
-- **MongoDB** - Primary database
-- **Redis** - Caching and sessions  
+
 - **NGINX** - Reverse proxy
 - **API** - Express.js backend (includes FFmpeg video processing)
 - **Web** - Next.js frontend
+
+**Note**: MongoDB and Redis must be configured as remote instances. See environment configuration section for setup.
 
 ### Storage Configuration
 
@@ -245,12 +227,14 @@ MongoDB indexes are automatically created on startup. For schema changes:
 ## 🚀 Production Deployment
 
 ### Performance Optimizations
+
 - **NGINX caching** for static assets and HLS segments
 - **Redis caching** for frequently accessed data
 - **CDN integration** ready (Cloudflare)
 - **Database indexing** for optimal query performance
 
 ### Security Features
+
 - **Rate limiting** on API endpoints
 - **CORS protection**
 - **Helmet.js** security headers
@@ -258,8 +242,9 @@ MongoDB indexes are automatically created on startup. For schema changes:
 - **Input validation** with Joi
 
 ### Monitoring & Logging
+
 - **Structured logging** with Winston
-- **Health check endpoints**
+- **Health check endpoints** /status & /message/jared
 - **Error tracking** ready for Sentry integration
 
 ## 🤝 Contributing
@@ -277,7 +262,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- **Documentation**: Check this README and code comments
+- **Documentation**: Check this README, .docs folder, and code comments
 - **Issues**: Open a GitHub issue for bugs or feature requests
 - **Discussions**: Use GitHub Discussions for questions
 

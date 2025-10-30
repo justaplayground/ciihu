@@ -177,7 +177,7 @@ FRONTEND_URL=http://localhost:3000
 
 ### Frontend (`apps/web/.env`)
 ```env
-NEXT_PUBLIC_API_HOST=http://localhost:3001
+NEXT_PUBLIC_API_HOST=http://localhost:5001
 ```
 
 ## Google OAuth Setup
@@ -188,8 +188,8 @@ NEXT_PUBLIC_API_HOST=http://localhost:3001
 4. Create OAuth 2.0 credentials:
    - Application type: Web application
    - Authorized redirect URIs:
-     - `http://localhost:3001/api/auth/google/callback`
-     - `http://localhost:3001/api/auth/google/register/callback`
+     - `http://localhost:5001/api/auth/google/callback`
+     - `http://localhost:5001/api/auth/google/register/callback`
      - Add production URLs when deploying
 5. Copy Client ID and Client Secret to `.env`
 

@@ -1,36 +1,6 @@
 version: "3.8"
 
 services:
-  # MongoDB Database
-  mongodb:
-    image: mongo:7.0
-    container_name: ciihu_mongodb
-    restart: always
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password123
-      MONGO_INITDB_DATABASE: video-platform
-    volumes:
-      - mongodb_data:/data/db
-      - ./docker/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
-    networks:
-      - ciihu_network
-
-  # Redis Cache
-  redis:
-    image: redis:7.2-alpine
-    container_name: ciihu_redis
-    restart: always
-    ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes --requirepass redis123
-    volumes:
-      - redis_data:/data
-    networks:
-      - ciihu_network
-
   # API Server
   api:
     container_name: ciihu_api
@@ -39,19 +9,9 @@ services:
       dockerfile: ./apps/api/Dockerfile
     restart: always
     ports:
-      - "3001:3001"
-    environment:
-      NODE_ENV: production
-      PORT: 3001
-      MONGODB_URI: mongodb://admin:password123@mongodb:27017/video-platform?authSource=admin
-      REDIS_URL: redis://:redis123@redis:6379
-      JWT_SECRET: your-super-secret-jwt-key-change-in-production
-      JWT_REFRESH_SECRET: your-super-secret-refresh-key-change-in-production
-      CORS_ORIGIN: http://localhost:3000
-      FRONTEND_URL: http://localhost:3000
-    depends_on:
-      - mongodb
-      - redis
+      - "5001:5001"
+    env_file:
+      - ./apps/api/.env
     networks:
       - ciihu_network
 
@@ -65,7 +25,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      NEXT_PUBLIC_API_URL: http://localhost:5001/api
     depends_on:
       - api
     networks:
@@ -87,10 +47,6 @@ services:
       - api
     networks:
       - ciihu_network
-
-volumes:
-  mongodb_data:
-  redis_data:
 
 networks:
   ciihu_network:

@@ -6,14 +6,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 // Server Configuration
-export const PORT = process.env.PORT || 3001;
+export const PORT = process.env.PORT || 5001;
 export const NODE_ENV = process.env.NODE_ENV || 'development';
 export const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
 export const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-// Database Configuration
-export const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/video-platform';
-export const REDIS_URL: string = process.env.REDIS_URL || 'redis://localhost:6379';
+// Database Configuration (REQUIRED - No local fallbacks)
+export const MONGODB_URI = process.env.MONGODB_URI || '';
+export const REDIS_URL: string = process.env.REDIS_URL || '';
 
 // JWT Configuration
 export const JWT_SECRET: string = process.env.JWT_SECRET || 'fallback-secret';
@@ -39,10 +39,18 @@ export const FFMPEG_PATH = process.env.FFMPEG_PATH;
 export const FFPROBE_PATH = process.env.FFPROBE_PATH;
 
 /**
- * Validate critical configuration at startup
- */
+* Validate critical configuration at startup
+*/
 export function validateConfig(): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
+
+  // Database Configuration validation
+  if (!MONGODB_URI) {
+    errors.push('MONGODB_URI is required - please configure remote MongoDB connection');
+  }
+  if (!REDIS_URL) {
+    errors.push('REDIS_URL is required - please configure remote Redis connection');
+  }
 
   // R2 Configuration validation
   if (!R2_ACCOUNT_ID) {
