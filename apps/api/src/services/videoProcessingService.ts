@@ -15,6 +15,7 @@ import {
   R2_BUCKET_NAME,
   R2_PUBLIC_URL
 } from '../config/constants';
+import { getLimitedResolutionsByOriginalHeight } from '../utils/media';
 
 // Configure FFmpeg paths
 if (FFMPEG_PATH) {
@@ -133,22 +134,7 @@ export class VideoProcessingService {
       await this.updateVideoStatus(videoId, 'transcoding', 20, 'Starting transcoding');
 
       // Generate different quality versions
-      const resolutions = [
-        { name: '360p', height: 360, bitrate: '500k', maxrate: '550k', bufsize: '750k' },
-        { name: '480p', height: 480, bitrate: '1000k', maxrate: '1100k', bufsize: '1500k' },
-        { name: '720p', height: 720, bitrate: '2500k', maxrate: '2675k', bufsize: '3750k' },
-      ];
-      
-      if (metadata.height >= 1080) {
-        resolutions.push({ name: '1080p', height: 1080, bitrate: '4000k', maxrate: '4300k', bufsize: '6000k' });
-      }
-      // currently not transcoding 2k and 4k videos because it's too slow, takes too much time, and server resources are limited
-      // if (metadata.height >= 1440) {
-      //   resolutions.push({ name: '1440p', height: 1440, bitrate: '8000k', maxrate: '8600k', bufsize: '12000k' });
-      // }
-      // if (metadata.height >= 2160) {
-      //   resolutions.push({ name: '2160p', height: 2160, bitrate: '16000k', maxrate: '17200k', bufsize: '24000k' });
-      // }
+      const resolutions = getLimitedResolutionsByOriginalHeight(metadata.height);
 
       const hlsPlaylistUrls: any[] = [];
       let progressStep = 30; // Start from 30%, each resolution adds ~12-16%
